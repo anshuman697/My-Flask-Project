@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drive</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f0f0f0;
+        }
+
+        .file-link {
+            text-decoration: none;
+            color: #337ab7;
+        }
+
+        .file-link:hover {
+            color: #23527c;
+        }
+
+        .download-button {
+            background-color: #007BFF;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .download-button:hover {
+            background-color: #0056b3;
+        }
+
+        .open-button {
+            background-color: #28a745;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .open-button:hover {
+            background-color: #218838;
+        }
+        .container {
+    max-width: auto;
+    margin: auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+    </style>
+</head>
+<body>
+	<div class="container">
+    <h1>File Categories</h1>
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="file">
+        <button type="submit">Upload</button>
+    </form>
+    <table>
+        <thead>
+            <tr>
+                <th>Video Files</th>
+                <th>Music Files</th>
+                <th>Image Files</th>
+                <th>PDF Files</th>
+                <th>Text Files</th>
+                <th>Python Files</th>
+                <th>HTML Files</th>
+                <th>PPT Files</th>
+                <th>DOC Files</th>
+                <th>Other Files</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>
+                    {% for file in categorized_files['video'] %}
+                    <span>{{ file[:10] }}...</span>
+                    <button class="open-button"><a href="{{ url_for('open_file', filename=file) }}">Open</a></button>
+                    <br>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for file in categorized_files['music'] %}
+                    <span>{{ file[:10] }}...</span>
+                    <button class="open-button"><a href="{{ url_for('open_file', filename=file) }}">Open</a></button>
+                    <br>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for file in categorized_files['image'] %}
+                    <span>{{ file[:10] }}...</span>
+                    <button class="open-button"><a href="{{ url_for('open_file', filename=file) }}">Open</a></button>
+                    <br>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for file in categorized_files['pdf'] %}
+                    <span>{{ file[:10] }}...</span>
+                    <button class="open-button"><a href="{{ url_for('open_file', filename=file) }}">Open</a></button>
+                    <br>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for file in categorized_files['text'] %}
+                    <span>{{ file[:10] }}...</span>
+                    <button class="open-button"><a href="{{ url_for('open_file', filename=file) }}">Open</a></button>
+                    <br>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for file in categorized_files['python'] %}
+                    <span>{{ file[:10] }}...</span>
+                    <button class="open-button"><a href="{{ url_for('open_file', filename=file) }}">Open</a></button>
+                    <br>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for file in categorized_files['html'] %}
+                    <span>{{ file[:10] }}...</span>
+                    <button class="open-button"><a href="{{ url_for('open_file', filename=file) }}">Open</a></button>
+                    <br>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for file in categorized_files['ppt'] %}
+                    <span>{{ file[:10] }}...</span>
+                    <button class="open-button"><a href="{{ url_for('open_file', filename=file) }}">Open</a></button>
+                    <br>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for file in categorized_files['doc'] %}
+                    <span>{{ file[:10] }}...</span>
+                    <button class="open-button"><a href="{{ url_for('open_file', filename=file) }}">Open</a></button>
+                    <br>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for file in categorized_files['other'] %}
+                    <span>{{ file[:10] }}...</span>
+                    <button class="open-button"><a href="{{ url_for('open_file', filename=file) }}">Open</a></button>
+                    <br>
+                    {% endfor %}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+        </div>
+</body>
+</html>
+
