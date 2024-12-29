@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync Music</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <style>
+        /* Basic styles */
+        .container {
+    max-width: 600px;
+    margin: auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+        .button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        audio {
+            margin-top: 20px;
+            width: 100%;
+        }
+
+        .controls {
+            margin-top: 10px;
+        }
+
+        .sync-control {
+            margin-top: 20px;
+        }
+        #music_file{
+        	width:100%;
+
+}
+    </style>
+</head>
+<body>
+	<div class="container">
+    <h1>Sync Music</h1>
+
+    <!-- Role Selection and File Selection -->
+    <form id="syncForm" method="POST">
+        <label for="role">Choose your role:</label>
+        <select name="role" id="role" required>
+            <option value="">Select Role</option>
+            <option value="Player">Player</option>
+            <option value="Speaker">Speaker</option>
+        </select>
+        <br><br>
+
+        <label for="music_file">Choose a music file:</label>
+        <select name="music_file" id="music_file" required>
+            {% for file in files %}
+                <option value="{{ file }}">{{ file }}</option>
+            {% endfor %}
+        </select>
+        <br><br>
+
+        <button type="submit" class="button">Start Sync</button>
+    </form>
+
+    <!-- Audio Player -->
+    <audio id="audioPlayer" controls style="display:none;">
+        <source id="audioSource" type="audio/mpeg">
+        Your browser does not support the audio element.
+    </audio>
+
+    <!-- Sync Adjustment -->
+    <div class="sync-control">
+        <label for="sync-gap">Adjust Sync Gap (ms):</label>
+        <input type="range" id="sync-gap" name="sync-gap" min="0" max="1000" value="0" step="50">
+        <span id="sync-gap-value">0 ms</span>
+        <br>
+        <button id="auto-sync" class="button">Auto Adjust Sync</button><br><br>
+    </div>
+
+    <!-- Playback Controls -->
+    <div class="controls">
+        <button id="playPause" class="button">Play</button>
+        <button id="next" class="button">Next</button>
+        <button id="prev" class="button">Previous</button><br><br>
+        <button id="shuffle" class="button">Shuffle</button>
+        <button id="repeat" class="button">Repeat</button>
+        <br><br>
+        Volume: <input type="range" id="volume-control" value="100" min="0" max="100">
+    </div>
+    
+    <div id="connectedUsers" style="display: none;">
+    <h3>Users Who Have Joined the Club:</h3>
+    <ul id="userList"></ul>
+</div>
+    </div>
+<script>
+    const socket = io.connect();
+
+// Emit join event when form is submitted
+document.getElementById('syncForm').onsubmit = function (e) {
+    e.preventDefault();
+    const username = document.getElementById('username').value;
+    const role = document.getElementById('role').value;
+    const musicFile = document.getElementById('music_file').value;
+
+    if (username && role) {
+        // Notify server of user joining the club
+        socket.emit('join_club', { username: username, role: role });
+        if (role === 'Player') {
+            document.getElementById('connectedUsers').style.display = 'block'; // Show user list for Player
+        }
+    } else {
+        alert('Please enter your username and select a role.');
+    }
+};
+
+// Listen for updates to the user list
+socket.on('update_users', function (data) {
+    const userList = document.getElementById('userList');
+    userList.innerHTML = ''; // Clear previous list
+    data.users.forEach(user => {
+        const li = document.createElement('li');
+        li.textContent = user.username; // Only show username of Speakers
+        userList.appendChild(li);
+    });
+});
+
+// Notify the player of a new joiner
+socket.on('user_joined', function (data) {
+    if (data.role === 'Speaker') {
+        alert(data.username + ' has joined the club as a Speaker!');
+    }
+});
+ </script>
+    <script>
+        const socket = io.connect();
+        let syncGap = 0; // Variable to store the sync gap value
+        let musicQueue = []; // Music queue for next/prev functionalities
+        let currentIndex = 0; // To keep track of the current music in the queue
+
+        // Handle form submission
+        document.getElementById('syncForm').onsubmit = function (e) {
+            e.preventDefault();
+            const role = document.getElementById('role').value;
+            const musicFile = document.getElementById('music_file').value;
+
+            if (role && musicFile) {
+                socket.emit('play_music', { music_file: musicFile });
+                if (!musicQueue.includes(musicFile)) {
+                    musicQueue.push(musicFile); // Add to queue if not already present
+                }
+                alert('Sync started. Waiting for music to play...');
+            } else {
+                alert('Please select both role and music file.');
+            }
+        };
+
+        // Listen for music data (play music on speaker devices)
+        socket.on('music_data', function (data) {
+            const audioPlayer = document.getElementById('audioPlayer');
+            const audioSource = document.getElementById('audioSource');
+            audioSource.src = '/music/' + data.music_file; // Use the Flask server path
+            audioPlayer.style.display = 'block'; // Show the audio player
+            audioPlayer.load();
+            setTimeout(() => audioPlayer.play(), syncGap); // Add sync delay
+        });
+
+        // Sync gap adjustment logic
+        document.getElementById('sync-gap').addEventListener('input', function (event) {
+            syncGap = event.target.value;
+            document.getElementById('sync-gap-value').textContent = syncGap + ' ms';
+        });
+
+        // Auto sync gap adjustment button
+        document.getElementById('auto-sync').onclick = function () {
+            syncGap = Math.floor(Math.random() * 1000); // Randomly adjust sync gap
+            document.getElementById('sync-gap').value = syncGap;
+            document.getElementById('sync-gap-value').textContent = syncGap + ' ms';
+            alert('Sync gap adjusted automatically!');
+        };
+
+        // Playback controls
+        document.getElementById('playPause').onclick = function () {
+            const audioPlayer = document.getElementById('audioPlayer');
+            if (audioPlayer.paused) {
+                audioPlayer.play();
+                this.textContent = 'Pause';
+            } else {
+                audioPlayer.pause();
+                this.textContent = 'Play';
+            }
+        };
+
+        document.getElementById('next').onclick = function () {
+            if (currentIndex < musicQueue.length - 1) {
+                currentIndex++;
+                socket.emit('play_music', { music_file: musicQueue[currentIndex] });
+            } else {
+                alert('No more songs in the queue.');
+            }
+        };
+
+        document.getElementById('prev').onclick = function () {
+            if (currentIndex > 0) {
+                currentIndex--;
+                socket.emit('play_music', { music_file: musicQueue[currentIndex] });
+            } else {
+                alert('No previous songs in the queue.');
+            }
+        };
+
+        document.getElementById('shuffle').onclick = function () {
+            musicQueue = musicQueue.sort(() => Math.random() - 0.5); // Shuffle the queue
+            currentIndex = 0;
+            socket.emit('play_music', { music_file: musicQueue[currentIndex] });
+        };
+
+        document.getElementById('repeat').onclick = function () {
+            const audioPlayer = document.getElementById('audioPlayer');
+            audioPlayer.loop = !audioPlayer.loop; // Toggle repeat mode
+            this.textContent = audioPlayer.loop ? 'Repeat On' : 'Repeat Off';
+        };
+
+        document.getElementById('volume-control').addEventListener('input', function (event) {
+            const audioPlayer = document.getElementById('audioPlayer');
+            audioPlayer.volume = event.target.value / 100; // Set volume from 0 to 1
+        });
+    </script>
+</body>
+</html>
