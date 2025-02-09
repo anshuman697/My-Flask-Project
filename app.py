@@ -3,14 +3,16 @@ from nltk.corpus import wordnet, stopwords
 from nltk import ne_chunk, pos_tag
 from nltk.sentiment import SentimentIntensityAnalyzer
 from nltk import FreqDist
-import numpybÁ
+import numpy
 from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file, send_from_directory, jsonify
-from flask_socketio import SocketIO, emit, join_room
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
 import json
 import sqlite3
 from datetime import timedelta
 from authlib.integrations.flask_client import OAuth
+import random
+
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -21,13 +23,14 @@ socketio = SocketIO(app)
 
 # Folder configurations
 UPLOAD_FOLDER = 'uploads'
+UPLOAD_FOLDER1 = '/storage/emulated/0/ylog/static/music'
 MUSIC_FOLDER = '/storage/emulated/0/VidMate/download'
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
+app.config['UPLOAD_FOLDER1'] = UPLOAD_FOLDER1
 # OAuth Configuration
 oauth = OAuth(app)
 google = oauth.register(
@@ -39,7 +42,7 @@ google = oauth.register(
     api_base_url='https://www.googleapis.com/oauth2/v1/',
     client_kwargs={'scope': 'openid email profile'}
 )
-
+rooms={}
 # SQLite database initialization
 conn = sqlite3.connect('chat.db', check_same_thread=False)
 cursor = conn.cursor()
@@ -77,6 +80,10 @@ def home():
         return redirect(url_for('dashboard'))
     return render_template('home.html')
 
+@app.route('/home')
+def home_page():
+    return render_template('home.html')
+    
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
@@ -107,6 +114,7 @@ def login():
             session.permanent = True  # Make the session permanent
             session['username'] = username
             flash("Login successful!")
+            
             return redirect(url_for('dashboard'))
         flash("Invalid username or password.")
         return redirect(url_for('login'))
@@ -125,6 +133,9 @@ def dashboard():
         return redirect(url_for('login'))
     return render_template('main.html', username=session['username'])
 
+#-----------------------------------------drive zone------------------------------------------#
+
+
 @app.route('/drive', methods=['GET', 'POST'])
 def drive():
     if request.method == 'POST':
@@ -137,13 +148,16 @@ def drive():
             return redirect(request.url)
         
         # Validate file extension
-        allowed_extensions = ('.mp3', '.wav', '.txt', '.pdf', '.jpg', '.png', '.mp4', '.mkv', '.avi')
+        allowed_extensions = ('.mp3', '.wav', '.txt', '.pdf', '.jpg', '.png', '.mp4', '.mkv', '.avi','.py','.pptx','.docx','.html')
         if not file.filename.lower().endswith(allowed_extensions):
             flash("Invalid file type! Only specific formats are allowed.")
             return redirect(request.url)
         
         # Save file to UPLOAD_FOLDER
         file.save(os.path.join(app.config['UPLOAD_FOLDER'], file.filename))
+        if file.filename.endswith(('.mp3', '.wav')) :
+            print('Its reached')
+            file.save(os.path.join(app.config['UPLOAD_FOLDER1'], file.filename))
         flash(f"File {file.filename} uploaded successfully!")
 
     # List files dynamically from UPLOAD_FOLDER
@@ -154,8 +168,13 @@ def drive():
         'image': [f for f in files if f.lower().endswith(('.jpg', '.jpeg', '.png'))],
         'pdf': [f for f in files if f.lower().endswith('.pdf')],
         'text': [f for f in files if f.lower().endswith('.txt')],
-        'other': [f for f in files if not f.lower().endswith(('.mp4', '.mp3', '.wav', '.jpg', '.jpeg', '.png', '.pdf', '.txt'))]
+        'python': [f for f in files if f.lower().endswith('.py')],
+        'html': [f for f in files if f.lower().endswith('.html')],
+        'ppt': [f for f in files if f.lower().endswith('.pptx')],
+        'doc': [f for f in files if f.lower().endswith('.docx')],
+        'other': [f for f in files if not f.lower().endswith(('.mp4', '.mp3', '.wav', '.jpg', '.jpeg', '.png', '.pdf', '.txt',))]
     }
+
 
     return render_template('drive.html', categorized_files=categorized_files)
 
@@ -171,81 +190,157 @@ def open_file(filename):
     else:
         flash(f"File {filename} not found.")
         return redirect(url_for('drive'))
+        
+#-----------------------------------------music zone------------------------------------------#
 
-@app.route('/music/<path:filename>')
-def serve_music(filename):
-    file_path = os.path.join("/storage/emulated/0/VidMate/download/", filename)
-    if os.path.exists(file_path):
-        return send_file(file_path)
+MUSIC_FOLDER = os.path.join(os.getcwd(), 'static', 'music')
+if not os.path.exists(MUSIC_FOLDER):
+    os.makedirs(MUSIC_FOLDER)
+
+rooms_m = {}  # {room_name: {'users': [{'id': socket_id, 'username': 'name', 'role': 'Listener', 'volume': 1}], 'current_song': None, 'repeat': False, 'shuffle': False}}
+
+@app.route('/sync')
+def index():
+    """Render the music synchronization homepage."""
+    return render_template('index.html')
+
+@app.route('/room', methods=['POST'])
+def create_or_join_room():
+    """Handle room creation or joining as a player or listener."""
+    username = request.form.get('username')
+    role = request.form.get('role')
+    room_name = request.form.get('room_name')
+
+    if not username or not role or not room_name:
+        return "All fields are required!", 400
+
+    # Initialize room if it doesn't exist
+    if room_name not in rooms_m:
+        rooms_m[room_name] = {'players': [], 'listeners': []}
+
+    if role == 'Player' and len(rooms_m[room_name]['players']) == 0:
+        rooms_m[room_name]['players'].append({'username': username})
+    elif role == 'Listener':
+        rooms_m[room_name]['listeners'].append({'username': username, 'volume': 1})
     else:
-        return f"File {filename} not found.", 404
+        return "Only one player allowed per room!", 400
 
-connected_users = []  # To store connected users
+    return render_template(
+        'room2.html',
+        room_name=room_name,
+        username=username,
+        role=role,
+        files=os.listdir(MUSIC_FOLDER),
+    )
 
-@app.route('/sync', methods=['GET', 'POST'])
-def sync():
-    music_files = [f for f in os.listdir(MUSIC_FOLDER) if f.endswith(('.mp3', '.wav'))]
+@socketio.on('join_room')
+def handle_join_room(data):
+    username = data['username']
+    role = data['role']
+    room = data['room']
+    join_room(room)
 
-    if request.method == 'POST':
-        username = request.form.get('username')  # Username from login
-        user_role = request.form.get('role')    # Get user role (Player or Speaker)
-        selected_music = request.form.get('music_file')  # Get selected music file
-        sync_time_gap = request.form.get('sync_time_gap', 0)  # Sync time gap adjustment (in milliseconds)
+    if room not in rooms_m:
+        rooms_m[room] = {'users': [], 'current_song': None, 'repeat': False, 'shuffle': False}
 
-        if username:
-            # Add user to the connected users list
-            connected_users.append({'username': username, 'role': user_role})
-            # Notify all clients about the new user joining
-            socketio.emit('user_joined', {'username': username, 'role': user_role}, broadcast=True)
+    user = {'id': request.sid, 'username': username, 'role': role, 'volume': 1, 'removed': False}
+    rooms_m[room]['users'].append(user)
 
-        if user_role and selected_music:
-            if user_role == 'Player':
-                # Emit selected music and sync data to all connected clients
-                socketio.emit('music_data', {'music_file': selected_music, 'sync_time_gap': sync_time_gap}, broadcast=True)
-                flash("You are the player, syncing music...")
-            else:
-                flash("You are the speaker, waiting for the music to be played...")
-        else:
-            flash("Please select both a role and a music file.")
-
-    return render_template('sync.html', files=music_files)
-
-# SocketIO event for new connection
-@socketio.on('join_club')
-def handle_join_club(data):
-    username = data.get('username')
-    role = data.get('role')
-    if username:
-        # Add user to the connected users list
-        connected_users.append({'username': username, 'role': role})
-        # Notify only the Player about the joined user
-        for user in connected_users:
-            if user['role'] == 'Player':
-                emit('update_users', {'users': connected_users}, to=request.sid)
-
-# Allow player to fetch the connected users (show only Speakers to the Player)
-@socketio.on('get_users')
-def send_connected_users():
-    # Filter the users to only show Speakers to Players
-    speakers = [user for user in connected_users if user['role'] == 'Speaker']
-    emit('update_users', {'users': speakers})
-    
-@socketio.on('music_data')
-def handle_music_data(data):
-    music_file = data.get('music_file')
-    sync_time_gap = data.get('sync_time_gap', 0)  # Get the sync time gap adjustment
-    if music_file:
-        # Broadcast the music file and sync time gap to all connected clients
-        emit('play_music', {'music_file': music_file, 'sync_time_gap': sync_time_gap}, broadcast=True)
+    emit('update_listener_list', rooms_m[room]['users'], to=room)
 
 @socketio.on('play_music')
-def play_music(data):
-    music_file = data.get('music_file')
-    sync_time_gap = data.get('sync_time_gap', 0)  # Sync time gap for player-speaker sync
-    if music_file:
-        # Broadcast the music file and sync time gap to all clients
-        emit('music_data', {'music_file': music_file, 'sync_time_gap': sync_time_gap}, broadcast=True)
+def handle_play_music(data):
+    room = data['room']
+    music_file = data['music_file']
+    rooms_m[room]['current_song'] = music_file
+    emit('play_music', {'music_file': music_file}, to=room)
+
+@socketio.on('pause_music')
+def handle_pause_music(data):
+    room = data['room']
+    emit('pause_music', to=room)
+
+@socketio.on('seek_music')
+def handle_seek_music(data):
+    room = data['room']
+    seek_time = data['seek_time']
+    emit('seek_music', {'seek_time': seek_time}, to=room)
+
+@socketio.on('update_listener_volume')
+def handle_update_listener_volume(data):
+    room = data['room']
+    listener_id = data['listenerId']
+    volume = data['volume']
+
+    for user in rooms_m[room]['users']:
+        if user['id'] == listener_id:
+            user['volume'] = volume
+            break
+
+    emit('update_listener_list', rooms_m[room]['users'], to=room)
+
+@socketio.on('remove_listener')
+def handle_remove_listener(data):
+    room = data['room']
+    listener_id = data['listenerId']
+
+    for user in rooms_m[room]['users']:
+        if user['id'] == listener_id:
+            user['removed'] = True
+            emit('you_are_removed', to=user['id'])
+            break
+
+    emit('update_listener_list', rooms_m[room]['users'], to=room)
+
+@socketio.on('rejoin_listener')
+def handle_rejoin_listener(data):
+    room = data['room']
+    listener_id = data['listenerId']
+
+    for user in rooms_m[room]['users']:
+        if user['id'] == listener_id:
+            user['removed'] = False
+            break
+
+    emit('update_listener_list', rooms_m[room]['users'], to=room)
+
+@socketio.on('control_panel_shuffle')
+def handle_shuffle_music(data):
+    room = data['room']
+    rooms_m[room]['shuffle'] = not rooms_m[room]['shuffle']
+    emit('shuffle_music', {'shuffle': rooms_m[room]['shuffle']}, to=room)
+
+@socketio.on('control_panel_repeat')
+def handle_repeat_music(data):
+    room = data['room']
+    rooms_m[room]['repeat'] = not rooms_m[room]['repeat']
+    emit('repeat_music', {'repeat': rooms_m[room]['repeat']}, to=room)
+
+@socketio.on('shuffle_music')
+def handle_shuffle_music(data):
+    if 'action' in data:
+        action = data['action']
+        if action == 'shuffle':
+            # Perform shuffle logic
+            pass
+    else:
+        print("Error: 'action' key is missing")
+
+@socketio.on('repeat_music')
+def handle_repeat_music(data):
+    if 'action' in data:
+        action = data['action']
+        if action == 'repeat':
+            # Perform repeat logic
+            pass
+    else:
+        print("Error: 'action' key is missing")
+
+#-----------------------------------------music zone end------------------------------------#
         
+        
+ #---------------------------------------What'sChat zone-----------------------------------#
+ 
 @app.route('/whatschat', methods=['GET', 'POST'])
 def whatschat():
     return render_template('whatschat.html')
@@ -270,20 +365,39 @@ def handle_message(data):
     conn.commit()
     emit('new_message', {'username': username, 'message': message}, room=room)
 
-
+#-----------------------------------------Need zone------------------------------------------#
 
 # Need Feedback Page
+from datetime import datetime
+
 @app.route("/need", methods=["GET", "POST"])
 def need():
     if request.method == "POST":
-        feedback = request.form.get("feedback")
-        f=open('feedback.txt','a')
-        feed=feedback+"\n"
-        f.write(feed)
-        print(feedback)
-        f.close()
-        return f"Thank you for your feedback: {feedback}"
+        if 'username' not in session:
+            flash("Please log in to provide feedback.")
+            return redirect(url_for('login'))
         
+        feedback = request.form.get("feedback")
+        username = session.get('username', 'Unknown')  # Get username from session
+
+        # Get current date and time
+        now = datetime.now()
+        formatted_time = now.strftime("%A - %d/%m/%Y - %H:%M:%S")  # Example: Friday - 10/01/2025 - 14:30:45
+
+        feedback_entry = f"{username}[{formatted_time}]: {feedback}\n"
+
+        # Store feedback in a text file
+        try:
+            with open('feedback.txt', 'a', encoding='utf-8') as f:
+                f.write(feedback_entry)
+        except Exception as e:
+            print("Error saving feedback:", e)
+            flash("An error occurred while saving feedback.")
+            return redirect(url_for('need'))
+
+        flash("Thank you for your feedback!")
+        return redirect(url_for('need'))
+
     return render_template("need.html")
     
 # Error Handling
@@ -357,6 +471,114 @@ def ai_zone():
 
 
 #--------------------------------------AI work Zone End-------------------------------------#
-# Main Execution
-if __name__ == '__main__':
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+#--------------------------------------Game zone start--------------------------------------#
+games = {}
+global_leaderboard = []
+
+def check_winner(board):
+    for i in range(3):
+        if board[i*3] == board[i*3+1] == board[i*3+2] and board[i*3] != '':
+            return board[i*3], [(i*3), (i*3+1), (i*3+2)]
+        if board[i] == board[i+3] == board[i+6] and board[i] != '':
+            return board[i], [i, i+3, i+6]
+    if board[0] == board[4] == board[8] and board[0] != '':
+        return board[0], [0, 4, 8]
+    if board[2] == board[4] == board[6] and board[2] != '':
+        return board[2], [2, 4, 6]
+    return None, []
+
+def ai_move(board):
+    empty_cells = [i for i in range(len(board)) if board[i] == '']
+    return random.choice(empty_cells) if empty_cells else None
+
+@app.route('/game')
+def game():
+    return render_template('index13.html')
+
+@socketio.on('join')
+def on_join(data):
+    room = data['room']
+    mode = data['mode']
+    join_room(room)
+    if room not in games:
+        games[room] = {
+            'board': [''] * 9,
+            'turn': 'X',
+            'mode': mode,
+            'players': [],
+            'spectators': [],
+            'scores': {'X': 0, 'O': 0}
+        }
+    if mode == 'single' or len(games[room]['players']) < 2:
+        games[room]['players'].append(request.sid)
+    else:
+        games[room]['spectators'].append(request.sid)
+    emit('update_board', games[room], room=request.sid)
+
+@socketio.on('move')
+def on_move(data):
+    room = data['room']
+    index = data['index']
+    game = games[room]
+
+    if game['board'][index] == '' and request.sid in game['players']:
+        game['board'][index] = game['turn']
+        winner, win_indices = check_winner(game['board'])
+
+        if winner:
+            game['scores'][winner] += 1
+            update_global_leaderboard(room, game['players'], winner, game['scores'][winner])
+            emit('winner', {'winner': winner, 'win_indices': win_indices}, room=room)
+            game['board'] = [''] * 9
+        elif '' not in game['board']:
+            emit('draw', {}, room=room)
+            update_global_leaderboard(room, game['players'], 'Draw', 0)
+            game['board'] = [''] * 9
+        else:
+            game['turn'] = 'O' if game['turn'] == 'X' else 'X'
+
+            if game['mode'] == 'single' and game['turn'] == 'O':
+                ai_index = ai_move(game['board'])
+                if ai_index is not None:
+                    game['board'][ai_index] = 'O'
+                    winner, win_indices = check_winner(game['board'])
+                    if winner:
+                        game['scores']['O'] += 1
+                        update_global_leaderboard(room, game['players'], 'O', game['scores']['O'])
+                        emit('winner', {'winner': winner, 'win_indices': win_indices}, room=room)
+                        game['board'] = [''] * 9
+                    elif '' not in game['board']:
+                        emit('draw', {}, room=room)
+                        update_global_leaderboard(room, game['players'], 'Draw', 0)
+                        game['board'] = [''] * 9
+                    else:
+                        game['turn'] = 'X'
+            emit('update_board', game, room=room)
+
+@socketio.on('reset')
+def on_reset(data):
+    room = data['room']
+    games[room]['board'] = [''] * 9
+    emit('update_board', games[room], room=room)
+
+@socketio.on('get_leaderboards')
+def on_get_leaderboards(data):
+    room = data['room']
+    local_leaderboard = games[room]['scores']
+    emit('leaderboards', {'local': local_leaderboard, 'global': global_leaderboard}, room=request.sid)
+
+def update_global_leaderboard(room, players, player, score):
+    # Check if the room exists in the global leaderboard
+    global_index = next((index for (index, entry) in enumerate(global_leaderboard) if entry['Room'] == room), None)
+
+    if global_index is not None:
+        # Update the existing entry for that room
+        global_leaderboard[global_index]['Player1'] = players[0]
+        global_leaderboard[global_index]['Player2'] = players[1] if len(players) > 1 else 'AI'
+        global_leaderboard[global_index]['Score1'] = score if player == 'X' else global_leaderboard[global_index]['Score1']
+        global_leaderboard[global_index]['Score2'] = score if player == 'O' else global_leaderboard[global_index]['Score2']
+    else:
+        # Add a new entry for the room
+        global_leaderboard.append({
+            'Room': room,
+            'Player1': play
