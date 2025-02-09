@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Tic-Tac-Toe</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Tic-Tac-Toe</h1>
+    <div id="game">
+        <input type="text" id="room" placeholder="Enter room name">
+        <select id="mode">
+            <option value="single">Single Player</option>
+            <option value="multi">Multiplayer</option>
+        </select>
+        <button onclick="joinGame()">Join Game</button>
+        <div id="info"></div>
+        <div id="scores"></div>
+        <div id="board"></div>
+        <button id="reset" onclick="resetGame()">Reset</button>
+        <div id="leaderboards">
+            <h3>Local Leaderboard</h3>
+            <table id="local-leaderboard" border="1">
+                <tr><th>Player</th><th>Score</th></tr>
+            </table>
+            <h3>Global Leaderboard</h3>
+            <table id="global-leaderboard" border="1">
+                <tr><th>Room</th><th>Player 1</th><th>Player 2</th><th>Score 1</th><th>Score 2</th></tr>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let room = null;
+
+        // Sound Effects
+        const moveSound = new Audio('/static/sounds/move.mp3');
+        const winSound = new Audio('/static/sounds/win.mp3');
+        const drawSound = new Audio('/static/sounds/draw.mp3');
+
+        function joinGame() {
+            room = document.getElementById('room').value;
+            const mode = document.getElementById('mode').value;
+            socket.emit('join', { room, mode });
+        }
+
+        socket.on('update_board', (data) => {
+            const boardDiv = document.getElementById('board');
+            const scoresDiv = document.getElementById('scores');
+            const infoDiv = document.getElementById('info');
+            boardDiv.innerHTML = '';
+            scoresDiv.innerHTML = `X: ${data.scores.X} | O: ${data.scores.O}`;
+            infoDiv.innerText = `Turn: ${data.turn}`;
+            data.board.forEach((cell, index) => {
+                const cellDiv = document.createElement('div');
+                cellDiv.className = 'cell';
+                cellDiv.innerText = cell;
+                cellDiv.onclick = () => makeMove(index);
+                boardDiv.appendChild(cellDiv);
+            });
+        });
+
+        socket.on('winner', (data) => {
+            winSound.play();
+            alert(`${data.winner} wins!`);
+            drawWinningLine(data.win_indices);
+            updateLeaderboards();
+        });
+
+        socket.on('draw', () => {
+            drawSound.play();
+            alert('It\'s a draw!');
+            updateLeaderboards();
+        });
+
+        socket.on('leaderboards', (data) => {
+            const localTable = document.getElementById('local-leaderboard');
+            const globalTable = document.getElementById('global-leaderboard');
+            localTable.innerHTML = '<tr><th>Player</th><th>Score</th></tr>';
+            globalTable.innerHTML = '<tr><th>Room</th><th>Player 1</th><th>Player 2</th><th>Score 1</th><th>Score 2</th></tr>';
+            Object.entries(data.local).forEach(([player, score]) => {
+                localTable.innerHTML += `<tr><td>${player}</td><td>${score}</td></tr>`;
+            });
+            data.global.forEach(entry => {
+                globalTable.innerHTML += `<tr><td>${entry.Room}</td><td>${entry.Player1}</td><td>${entry.Player2}</td><td>${entry.Score1}</td><td>${entry.Score2}</td></tr>`;
+            });
+        });
+
+        function makeMove(index) {
+            moveSound.play();
+            if (room) {
+                socket.emit('move', { room, index });
+            }
+        }
+
+        function resetGame() {
+            if (room) {
+                socket.emit('reset', { room });
+            }
+        }
+
+        function updateLeaderboards() {
+            socket.emit('get_leaderboards', { room });
+        }
+
+        function drawWinningLine(indices) {
+            const cells = document.querySelectorAll('.cell');
+            indices.forEach(index => {
+                cells[index].style.backgroundColor = 'red';
+            });
+        }
+    </script>
+</body>
+</html>
