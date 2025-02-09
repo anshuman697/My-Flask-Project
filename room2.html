@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Room - {{ room_name }}</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Room: {{ room_name }}</h1>
+        <h2>Welcome, {{ username }} ({{ role }})</h2>
+
+        <!-- Player Controls (Visible only for Player) -->
+        <div id="musicControls" style="display: {{ 'block' if role == 'Player' else 'none' }}">
+            <h3>Music Player</h3>
+            <select id="musicList">
+                {% for file in files %}
+                    <option value="{{ file }}">{{ file[:10] }}...</option>
+                {% endfor %}
+            </select>
+            <button id="playButton">Play</button>
+            <button id="pauseButton" style="display:none;">Pause</button>
+            <br><br>
+            <label for="volumeControl">Volume: </label>
+            <input type="range" id="volumeControl" min="0" max="1" step="0.1" value="1">
+            <br><br>
+            <label for="seekbar">Seekbar:</label>
+            <input type="range" id="seekbar" value="0" step="1" min="0">
+        </div>
+
+        <!-- Listener Management Dashboard -->
+        <div id="listenerDashboard" style="display: {{ 'block' if role == 'Player' else 'none' }}">
+            <h3>Connected Listeners</h3>
+            <table id="listenerTable">
+                <thead>
+                    <tr>
+                        <th>Listener Name</th>
+                        <th>Volume Control</th>
+                        <th>Presence Control</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Dynamic listener rows here -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Playback Controls (Universal) -->
+        <div class="controls">
+            <button id="playPause" class="button">Play</button>
+            <button id="next" class="button">Next</button>
+            <button id="prev" class="button">Previous</button>
+            <br><br>
+            <button id="shuffle" class="button">Shuffle</button>
+            <button id="repeat" class="button">Repeat</button>
+        </div>
+
+        <audio id="audioPlayer" controls style="display: none;">
+            <source id="audioSource" type="audio/mp3">
+        </audio>
+    </div>
+
+    <script>
+        const socket = io.connect();
+        const roomName = "{{ room_name }}";
+        const username = "{{ username }}";
+        const role = "{{ role }}";
+
+        // Join the room
+        socket.emit('join_room', { username, room: roomName, role });
+
+        // DOM Elements
+        const audioPlayer = document.getElementById('audioPlayer');
+        const seekbar = document.getElementById('seekbar');
+        const playButton = document.getElementById('playButton');
+        const pauseButton = document.getElementById('pauseButton');
+        const volumeControl = document.getElementById('volumeControl');
+
+        // Player-specific Controls
+        playButton.addEventListener('click', () => {
+            const selectedMusic = document.getElementById('musicList').value;
+            socket.emit('play_music', { room: roomName, music_file: selectedMusic });
+            playButton.style.display = 'none';
+            pauseButton.style.display = 'inline-block';
+        });
+
+        pauseButton.addEventListener('click', () => {
+            socket.emit('pause_music', { room: roomName });
+            pauseButton.style.display = 'none';
+            playButton.style.display = 'inline-block';
+        });
+
+        seekbar.addEventListener('input', () => {
+            const seekTime = seekbar.value;
+            socket.emit('seek_music', { room: roomName, seek_time: seekTime });
+        });
+
+        volumeControl.addEventListener('input', (event) => {
+            audioPlayer.volume = event.target.value;
+        });
+
+        // Handle Play Music Event (From Server)
+        socket.on('play_music', (data) => {
+            const audioSource = document.getElementById('audioSource');
+            audioSource.src = `/static/music/${data.music_file}`;
+            audioPlayer.style.display = 'block';
+            audioPlayer.load();
+            audioPlayer.play();
+        });
+
+        // Handle Pause Music Event (From Server)
+        socket.on('pause_music', () => {
+            audioPlayer.pause();
+        });
+
+        // Handle Seek Music Event (From Server)
+        socket.on('seek_music', (data) => {
+            audioPlayer.currentTime = data.seek_time;
+            if (audioPlayer.paused) {
+                audioPlayer.play(); // Resume for listeners
+            }
+        });
+
+        // Update Seekbar with Audio Playback
+        audioPlayer.addEventListener('timeupdate', () => {
+            seekbar.value = Math.floor(audioPlayer.currentTime);
+        });
+
+        // Universal Controls (for Player and Listener)
+        document.getElementById('playPause').addEventListener('click', () => {
+            if (audioPlayer.paused) {
+                audioPlayer.play();
+                playPause.textContent = 'Pause';
+            } else {
+                audioPlayer.pause();
+                playPause.textContent = 'Play';
+            }
+        });
+
+        // Playback Control Buttons
+        document.getElementById('next').addEventListener('click', () => {
+            // Logic to skip to the next song (handled by backend or queue system)
+        });
+
+        document.getElementById('prev').addEventListener('click', () => {
+            // Logic to go to the previous song (handled by backend or queue system)
+        });
+
+        document.getElementById('shuffle').addEventListener('click', () => {
+            socket.emit('control_panel_shuffle', { room: roomName });
+        });
+
+        document.getElementById('repeat').addEventListener('click', () => {
+            socket.emit('control_panel_repeat', { room: roomName });
+        });
+
+        // Listen for Shuffle and Repeat commands (from Player)
+        socket.on('shuffle_music', (data) => {
+            if (data.shuffle) {
+                document.getElementById('shuffle').textContent = 'Shuffle On';
+            } else {
+                document.getElementById('shuffle').textContent = 'Shuffle';
+            }
+        });
+
+        socket.on('repeat_music', (data) => {
+            if (data.repeat) {
+                document.getElementById('repeat').textContent = 'Repeat On';
+                audioPlayer.loop = true;
+            } else {
+                document.getElementById('repeat').textContent = 'Repeat';
+                audioPlayer.loop = false;
+            }
+        });
+
+        // Update Listener List for Player Dashboard
+        socket.on('update_listener_list', (listeners) => {
+            const listenerTable = document.getElementById('listenerTable').getElementsByTagName('tbody')[0];
+            listenerTable.innerHTML = ''; // Clear current list
+
+            listeners.forEach(listener => {
+                const row = listenerTable.insertRow();
+                const nameCell = row.insertCell(0);
+                const volumeCell = row.insertCell(1);
+                const controlCell = row.insertCell(2);
+
+                nameCell.textContent = listener.username;
+
+                const volumeControlInput = document.createElement('input');
+                volumeControlInput.type = 'range';
+                volumeControlInput.min = 0;
+                volumeControlInput.max = 1;
+                volumeControlInput.step = 0.1;
+                volumeControlInput.value = listener.volume;
+                volumeControlInput.addEventListener('input', (event) => {
+                    socket.emit('update_listener_volume', {
+                        listenerId: listener.id,
+                        volume: event.target.value,
+                        room: roomName
+                    });
+                });
+                volumeCell.appendChild(volumeControlInput);
+
+                const removeButton = document.createElement('button');
+                removeButton.textContent = listener.removed ? 'Join' : 'Remove';
+                removeButton.addEventListener('click', () => {
+                    if (listener.removed) {
+                        socket.emit('rejoin_listener', { listenerId: listener.id, room: roomName });
+                    } else {
+                        socket.emit('remove_listener', { listenerId: listener.id, room: roomName });
+                    }
+                });
+                controlCell.appendChild(removeButton);
+            });
+        });
+
+        // Notify if the listener is removed
+        socket.on('you_are_removed', () => {
+            alert("You have been removed from the room!");
+        });
+    </script>
+</body>
+</html>
