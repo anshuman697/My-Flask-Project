@@ -4,77 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drive</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-        }
+    <link rel="stylesheet" href="/static/style.css">
 
-        table {
-            border-collapse: collapse;
-            width: 100%;
-        }
-
-        th, td {
-            border: 1px solid #ddd;
-            padding: 10px;
-            text-align: left;
-        }
-
-        th {
-            background-color: #f0f0f0;
-        }
-
-        .file-link {
-            text-decoration: none;
-            color: #337ab7;
-        }
-
-        .file-link:hover {
-            color: #23527c;
-        }
-
-        .download-button {
-            background-color: #007BFF;
-            color: #fff;
-            border: none;
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-
-        .download-button:hover {
-            background-color: #0056b3;
-        }
-
-        .open-button {
-            background-color: #28a745;
-            color: #fff;
-            border: none;
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-
-        .open-button:hover {
-            background-color: #218838;
-        }
-        .container {
-    max-width: auto;
-    margin: auto;
-    background: #fff;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-}
-    </style>
 </head>
 <body>
 	<div class="container">
     <h1>File Categories</h1>
     <form method="POST" enctype="multipart/form-data">
-        <input type="file" name="file">
-        <button type="submit">Upload</button>
+        <input type="file" name="file" class="upload-button">
+        <button type="submit" class="submit-button">Upload</button>
     </form>
     <table>
         <thead>
