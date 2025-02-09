@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Zone</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script>
+        async function analyze() {
+            const choice = document.getElementById("choice").value;
+            const text = document.getElementById("text").value;
+            const word = document.getElementById("word").value;
+
+            const response = await fetch("/AI_Zone", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ choice, text, word })
+            });
+
+            const result = await response.json();
+            document.getElementById("result").innerText = JSON.stringify(result, null, 2);
+        }
+    </script>
+</head>
+<body>
+	<div class='container'>
+    <h1>AI Zone</h1>
+    <label for="choice">Choose Functionality:</label>
+    <select id="choice">
+        <option value="1">Word Tokenize</option>
+        <option value="2">Sentence Tokenize</option>
+        <option value="3">Word Frequency</option>
+        <option value="4">Find Synonyms</option>
+        <option value="5">Named Entity Recognition</option>
+        <option value="6">Sentiment Analysis</option>
+    </select><br><br>
+
+    <label for="text">Input Text:</label><br>
+    <textarea id="text" rows="4" cols="50"></textarea><br><br>
+
+    <label for="word">Word (optional):</label>
+    <input type="text" id="word"><br><br>
+
+    <button onclick="analyze()">Analyze</button>
+    <pre id="result"></pre>
+    </div>
+</body>
+</html>
